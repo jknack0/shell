@@ -23,15 +23,14 @@
 #define PROMPT "myShell >> "
 #define PROMPTSIZE sizeof(PROMPT)
 
-
-
 int main(int argc, char** argv) {
     char inputCommand[BUFFERSIZE];
     char *token;
     char *myargv[BUFFERSIZE];
-    int myargc; 
-    int status;
-    pid_t c_pid, pid;
+    int myargc;
+
+
+    
 
     // Program loop
     while(inputCommand[0] != 'z') {
@@ -39,40 +38,39 @@ int main(int argc, char** argv) {
         // Print the prompt
         printf(PROMPT);
 
+        
         // Get command from user
         fgets(inputCommand, BUFFERSIZE, stdin);
-
-        // Null terminate string
-        inputCommand[strlen(inputCommand) - 1] = '\0';
         
         // Split the user command into tokens and have argv point to them
         token = strtok(inputCommand, " ");
         myargc = 0;
         while (token) {
             myargv[myargc] = token;
+            printf("%s\n", myargv[myargc]);
             token = strtok(NULL, " ");
             myargc++;
         }
-
-        // null terminate
         myargv[myargc] = NULL;
+
+        execlp(myargv[0],myargv[0], NULL);;
+        //perror("execvp");
         
         
-        // 
-        c_pid = fork();
+
         
-        if (c_pid == 0) {
-            execvp(myargv[0], myargv);
-            perror("execvp");
-        } else if (c_pid > 0) {
-            if((pid = wait(&status)) < 0) {
-                perror("Wait");
-            }
-        } else {
-            
-        }
+        
+
+
+        
+        
+        
+       
+
+
+
+    
+        
     }
     return 0;
 }
-
-
