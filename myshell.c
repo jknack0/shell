@@ -28,6 +28,7 @@
 #define COMMAND_CD "cd"
 #define COMMAND_REDIRECT_OUTPUT ">"
 #define COMMAND_REDIRECT_OUTPUT_APPEND ">>"
+#define COMMAND_REDIRECT_INPUT "<"
 
 bool containsCharacter(char *myargv[], int myargc, char stringToCheck[]);
 int positionOfCharacter(char *myargv[], int myargc, char *stringToCheck);
@@ -137,6 +138,40 @@ int main(int argc, char** argv) {
             if(fork() == 0) {
                 dup2(fd_outputFile, STDOUT_FILENO);
                 close(fd_outputFile);
+                execvp(leftargv[0], leftargv);
+                _exit(1);
+            } else {
+               if((pid = wait(&status)) < 0) {
+                    perror("Wait");
+                }
+            } 
+            continue;
+        }
+        
+        // Redirect Input
+        if(containsCharacter(myargv, myargc, COMMAND_REDIRECT_INPUT)) {
+            int positionOfCommand = positionOfCharacter(myargv, myargc, COMMAND_REDIRECT_INPUT);
+            int leftargc = positionOfCommand;
+            char *leftargv[leftargc];
+            char *inputFilename = myargv[myargc - 1];
+            
+            // Loop through copying the program instructions to a new pointer array
+            for(int i = 0; i < leftargc; i++) {
+                leftargv[i] = myargv[i];
+            }
+
+            // Null terminate
+            leftargv[leftargc] = NULL;
+
+            // Open file/create and append
+            int fd_inputFile = open(inputFilename, O_RDONLY);
+            if(fd_inputFile < 0) {
+                perror("inputFile: ");
+            }
+            // Run ls in child process
+            if(fork() == 0) {
+                dup2(fd_inputFile, STDIN_FILENO);
+                close(fd_inputFile);
                 execvp(leftargv[0], leftargv);
                 _exit(1);
             } else {
