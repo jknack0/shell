@@ -29,6 +29,8 @@
 #define COMMAND_REDIRECT_OUTPUT ">"
 #define COMMAND_REDIRECT_OUTPUT_APPEND ">>"
 #define COMMAND_REDIRECT_INPUT "<"
+#define COMMAND_PIPE "|"
+#define COMMAND_BACKGROUND_PROCESS "&"
 
 bool containsCharacter(char *myargv[], int myargc, char stringToCheck[]);
 int positionOfCharacter(char *myargv[], int myargc, char *stringToCheck);
@@ -36,18 +38,19 @@ int positionOfCharacter(char *myargv[], int myargc, char *stringToCheck);
 
 
 int main(int argc, char** argv) {
-    bool isBackground = false;
+    bool isWaiting = true;
     char cwdBuffer[BUFFERSIZE];
     char inputCommand[BUFFERSIZE];
     char *token;
     char *myargv[BUFFERSIZE];
     int myargc; 
-    int status;
-    pid_t c_pid, pid;
+    int status = 0;
+    pid_t c_pid = 0, pid = 0;
 
+
+   
     // Program loop
-    while(true) {
-        
+    while(true){ 
         // Print the prompt
         printf(PROMPT);
 
@@ -66,25 +69,30 @@ int main(int argc, char** argv) {
         }
         myargc = 0;
         while (token) {
+            if(!strcmp(token,COMMAND_BACKGROUND_PROCESS)) {
+                isWaiting = false;
+                break;
+            }
             myargv[myargc] = token;
             token = strtok(NULL, " ");
             myargc++;
-        }
+        } 
+
 
         // NULL terminate
         myargv[myargc] = NULL;
 
         // Get current working directory
         if(!strcmp(*myargv, COMMAND_CWD)) {
-            printf("%s\n",getcwd(cwdBuffer, BUFFERSIZE));
+            printf("%s\n",cwdBuffer);
             continue;
-        }
+        }  
 
         // Change directory
         if(!strcmp(*myargv, COMMAND_CD)) {
             chdir(myargv[1]);
             continue;
-        }
+        }  
 
         // Redirect Output
         if(containsCharacter(myargv, myargc, COMMAND_REDIRECT_OUTPUT)) {
@@ -102,7 +110,7 @@ int main(int argc, char** argv) {
             leftargv[leftargc] = NULL;
 
             // Open file/create and trunc
-            int fd_outputFile = open(outputFilename, O_WRONLY | O_CREAT | O_TRUNC);
+            int fd_outputFile = open(outputFilename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
             // Run ls in child process
             if(fork() == 0) {
                 dup2(fd_outputFile, STDOUT_FILENO);
@@ -110,12 +118,14 @@ int main(int argc, char** argv) {
                 execvp(leftargv[0], leftargv);
                 _exit(1);
             } else {
-               if((pid = wait(&status)) < 0) {
-                    perror("Wait");
+                if(isWaiting) {
+                    if((pid = wait(&status)) < 0 && isWaiting) {
+                        perror("Wait");
+                    }
                 }
             } 
             continue;
-        }
+        } 
 
         // Redirect Output Append
         if(containsCharacter(myargv, myargc, COMMAND_REDIRECT_OUTPUT_APPEND)) {
@@ -133,7 +143,7 @@ int main(int argc, char** argv) {
             leftargv[leftargc] = NULL;
 
             // Open file/create and append
-            int fd_outputFile = open(outputFilename, O_WRONLY | O_CREAT | O_APPEND);
+            int fd_outputFile = open(outputFilename, O_WRONLY | O_CREAT | O_APPEND, 0666);
             // Run ls in child process
             if(fork() == 0) {
                 dup2(fd_outputFile, STDOUT_FILENO);
@@ -141,12 +151,14 @@ int main(int argc, char** argv) {
                 execvp(leftargv[0], leftargv);
                 _exit(1);
             } else {
-               if((pid = wait(&status)) < 0) {
-                    perror("Wait");
+               if(isWaiting) {
+                    if((pid = wait(&status)) < 0 && isWaiting) {
+                        perror("Wait");
+                    }
                 }
             } 
             continue;
-        }
+        }  
         
         // Redirect Input
         if(containsCharacter(myargv, myargc, COMMAND_REDIRECT_INPUT)) {
@@ -175,22 +187,93 @@ int main(int argc, char** argv) {
                 execvp(leftargv[0], leftargv);
                 _exit(1);
             } else {
-               if((pid = wait(&status)) < 0) {
-                    perror("Wait");
+               if(isWaiting) {
+                    if((pid = wait(&status)) < 0 && isWaiting) {
+                        perror("Wait");
+                    }
                 }
             } 
             continue;
-        }
+        } 
+
+        // Pipe
+        if(containsCharacter(myargv, myargc, COMMAND_PIPE)) {
+            int positionOfCommand = positionOfCharacter(myargv, myargc, COMMAND_PIPE);
+            int leftargc = positionOfCommand;
+            char *leftargv[leftargc];
+            int rightargc = myargc - positionOfCommand;
+            char *rightargv[rightargc];
+            int p[2];
+            
+            // Loop through copying the program instructions to a new pointer array
+            for(int i = 0; i < leftargc; i++) {
+                leftargv[i] = myargv[i];
+            }
+
+            // Null terminate
+            leftargv[leftargc] = NULL;
+            
+            int j = 0;
+            for(int i = leftargc + 1; i < myargc; i++) {
+                rightargv[j] = myargv[i];
+                j++;
+            }
+            
+            // Null terminate
+            rightargv[j] = NULL;
+
+            // Pipe
+            pipe(p);
+
+            // Fork to run left side in child
+            if(fork() == 0) {
+                dup2(p[1], 1);
+                close(p[0]);
+                close(p[1]); 
+                execvp(leftargv[0],leftargv);
+                perror("execvp");
+                _exit(1);
+            } else {
+                // Fork to run the right side
+                if(fork() == 0) {
+                    dup2(p[0], 0);
+                    close(p[0]);
+                    close(p[1]);
+                    execvp(rightargv[0],rightargv);
+                    perror("execvp");
+                    _exit(1);
+                } else {
+                    close(p[0]);
+                    close(p[1]);
+                    if(isWaiting) {
+                        // Wait for child process
+                        if((pid = wait(&status)) < 0 && isWaiting) {
+                            perror("Wait");
+                        }
+                }
+                }
+                close(p[0]);
+                close(p[1]);
+                // Wait for child process
+                if(isWaiting) {
+                    if((pid = wait(&status)) < 0 && isWaiting) {
+                        perror("Wait");
+                    }
+                }
+            }
+            continue;
+        }       
         
         // ls/cat/wc
-        c_pid = fork();
-        if (c_pid == 0) {
+        if (fork() == 0) {
             execvp(myargv[0], myargv);
             perror("execvp");
             _exit(1);
-        } else if (c_pid > 0) {
-            if((pid = wait(&status)) < 0) {
-                perror("Wait");
+        } else {
+            if(isWaiting) {
+                    if((pid = wait(&status)) < 0 && isWaiting) {
+                        perror("Wait");
+                    }
             }
         }
     }
