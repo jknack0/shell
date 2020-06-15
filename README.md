@@ -1,12 +1,12 @@
-# CSC 415 - Project 3 - My Shell
+# Linux Shell
 
-## Student Name: Jonathon Knack
-
-## Student ID: 917629133
+## Jonathon Knack
 
 ## Build Instructions
 type "make" while in the root folder
 
 ## Run Instructions
 ./myshell
-## List Extra Credit comepleted (if not attempted leave blank)
+
+## Description
+This is a simple shell written in C that mimics a unix/linux terminal.
